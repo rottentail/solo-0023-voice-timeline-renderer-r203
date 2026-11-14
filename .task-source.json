@@ -1,16 +1,16 @@
 {
   "task_source_schema_version": 1,
   "cc_feedback_profile": "cc-feedback-2611",
-  "project_domain": "游戏、图形与多媒体",
-  "project_subdirection": "音视频处理",
+  "project_domain": "\u6e38\u620f\u3001\u56fe\u5f62\u4e0e\u591a\u5a92\u4f53",
+  "project_subdirection": "\u97f3\u89c6\u9891\u5904\u7406",
   "supported_task_types": [
-    "功能开发",
+    "\u529f\u80fd\u5f00\u53d1",
     "Bugfix",
-    "代码重构",
-    "功能优化",
-    "质量保障",
-    "项目维护",
-    "问题排查与诊断"
+    "\u4ee3\u7801\u91cd\u6784",
+    "\u529f\u80fd\u4f18\u5316",
+    "\u8d28\u91cf\u4fdd\u969c",
+    "\u9879\u76ee\u7ef4\u62a4",
+    "\u95ee\u9898\u6392\u67e5\u4e0e\u8bca\u65ad"
   ],
   "entities": [
     {
@@ -49,7 +49,8 @@
       "invariants": [
         "Completed and failed are terminal",
         "A completed job has output metadata and a receipt",
-        "A failed job never exposes a partial published output"
+        "A failed job never exposes a partial published output",
+        "An interrupted retry reproduces the same PCM; completed receipts are never rewritten"
       ]
     },
     {
@@ -60,7 +61,8 @@
       ],
       "invariants": [
         "Receipt digest matches published output bytes",
-        "Measured peak respects the requested normalization target tolerance"
+        "Measured peak respects the requested normalization target tolerance",
+        "Receipt records the applied quantization semantics and measured error-band floors"
       ]
     }
   ],
@@ -140,14 +142,18 @@
       "family": "Render lifecycle",
       "occupied_by": [
         "durable_state_transitions",
-        "atomic_media_publication"
+        "atomic_media_publication",
+        "deterministic_checkpoint_resume"
       ],
       "available": false
     },
     {
       "family": "Dynamics processing",
-      "occupied_by": [],
-      "available": true
+      "occupied_by": [
+        "error_shaping_quantization",
+        "shaped_tpdf_dither"
+      ],
+      "available": false
     },
     {
       "family": "Timed caption pipeline",
@@ -188,6 +194,13 @@
       "entry": "source, timeline, and render service methods",
       "distinct_outcome": "A transactional repository can replace local file persistence without changing HTTP contracts.",
       "mechanism": "storage_boundary"
+    },
+    {
+      "id": "quantization-policy",
+      "anchor": "internal/audiocodec BuildQuantizationSpec and Quantizer",
+      "entry": "PUT /v1/timelines/{timeline_id}",
+      "distinct_outcome": "A timeline can keep the 16-bit container while moving quantization error out of the audible band with a described shaper profile.",
+      "mechanism": "deterministic_transform"
     }
   ],
   "tension_points": [

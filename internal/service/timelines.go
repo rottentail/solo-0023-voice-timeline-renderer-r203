@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"voice-timeline-renderer/internal/audiocodec"
 	"voice-timeline-renderer/internal/domain"
 )
 
@@ -16,12 +17,23 @@ func (s *Service) CreateTimeline(ctx context.Context, id string, request Timelin
 	if err := ctx.Err(); err != nil {
 		return domain.Timeline{}, false, err
 	}
+	mode, err := audiocodec.ParseQuantizationMode(request.Quantization)
+	if err != nil {
+		return domain.Timeline{}, false, domain.Wrap(
+			domain.KindInvalid,
+			"invalid_quantization",
+			"quantization",
+			"quantization must be legacy or noise_shaped_v1",
+			err,
+		)
+	}
 	candidate := domain.Timeline{
 		ID:             id,
 		Name:           strings.TrimSpace(request.Name),
 		SampleRate:     request.SampleRate,
 		OutputChannels: request.OutputChannels,
 		TargetPeakDBFS: request.TargetPeakDBFS,
+		Quantization:   string(mode),
 		Spans:          append([]domain.TimelineSpan(nil), request.Spans...),
 		State:          "validating",
 	}
@@ -72,6 +84,7 @@ func equivalentTimeline(left, right domain.Timeline) bool {
 		left.SampleRate != right.SampleRate ||
 		left.OutputChannels != right.OutputChannels ||
 		math.Abs(left.TargetPeakDBFS-right.TargetPeakDBFS) > 1e-9 ||
+		left.Quantization != right.Quantization ||
 		len(left.Spans) != len(right.Spans) {
 		return false
 	}

@@ -94,15 +94,17 @@ func DecodeWAV(data []byte) (*Clip, WAVInfo, error) {
 		}
 	}
 	frameCount := int64(len(samples) / channels)
-	return &Clip{
+	clip := &Clip{
 		SampleRate: sampleRate,
 		Channels:   channels,
 		Samples:    samples,
-	}, WAVInfo{
+	}
+	info := WAVInfo{
 		SampleRate:    sampleRate,
 		Channels:      channels,
 		BitsPerSample: bitsPerSample,
 		FrameCount:    frameCount,
 		ByteCount:     int64(len(data)),
-	}, nil
+	}
+	return clip, info, nil
 }

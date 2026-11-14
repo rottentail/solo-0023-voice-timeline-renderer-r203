@@ -62,11 +62,25 @@ func (harness *Harness) createTimeline(
 	targetPeak float64,
 	spans []domain.TimelineSpan,
 ) (domain.Timeline, int, error) {
+	return harness.createTimelineWithQuantization(ctx, id, name, sampleRate, channels, targetPeak, "", spans)
+}
+
+func (harness *Harness) createTimelineWithQuantization(
+	ctx context.Context,
+	id string,
+	name string,
+	sampleRate int,
+	channels int,
+	targetPeak float64,
+	quantization string,
+	spans []domain.TimelineSpan,
+) (domain.Timeline, int, error) {
 	status, body, err := harness.requestJSON(ctx, "PUT", "/v1/timelines/"+id, service.TimelineWriteRequest{
 		Name:           name,
 		SampleRate:     sampleRate,
 		OutputChannels: channels,
 		TargetPeakDBFS: targetPeak,
+		Quantization:   quantization,
 		Spans:          spans,
 	})
 	if err != nil {

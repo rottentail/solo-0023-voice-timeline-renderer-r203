@@ -4,7 +4,9 @@ import (
 	"context"
 	"sync"
 
+	"voice-timeline-renderer/internal/audiocodec"
 	"voice-timeline-renderer/internal/domain"
+	"voice-timeline-renderer/internal/render"
 )
 
 type Repository interface {
@@ -15,8 +17,17 @@ type Repository interface {
 	GetTimeline(string) (domain.Timeline, error)
 	SaveJob(domain.RenderJob) error
 	GetJob(string) (domain.RenderJob, error)
-	CommitRenderArtifacts(string, []byte, domain.RenderReceipt) error
 	GetRenderOutput(string) ([]byte, domain.RenderReceipt, error)
+	ReadRenderReceiptFile(string) (domain.RenderReceipt, error)
+	DecodeSourceAsset(string) (render.SourceFile, error)
+	OpenSourceReader(context.Context, render.SourceFile) (audiocodec.FrameReader, error)
+	RenderStagingDir(string) (string, error)
+	RenderPartialPath(string) (string, error)
+	RemoveRenderPartial(string) error
+	SaveRenderCheckpoint(string, render.RenderCheckpoint) error
+	LoadRenderCheckpoint(string) (*render.RenderCheckpoint, error)
+	ClearRenderCheckpoint(string) error
+	CommitRenderFromFile(string, string, domain.RenderReceipt, string) error
 }
 
 type Config struct {
@@ -63,16 +74,12 @@ type TimelineWriteRequest struct {
 	SampleRate     int                   `json:"sample_rate"`
 	OutputChannels int                   `json:"output_channels"`
 	TargetPeakDBFS float64               `json:"target_peak_dbfs"`
+	Quantization   string                `json:"quantization,omitempty"`
 	Spans          []domain.TimelineSpan `json:"spans"`
 }
 
 type RenderWriteRequest struct {
 	TimelineID string `json:"timeline_id"`
-}
-
-type RenderResult struct {
-	Job domain.RenderJob
-	WAV []byte
 }
 
 func (s *Service) GetSource(ctx context.Context, id string) (domain.SourceAsset, error) {

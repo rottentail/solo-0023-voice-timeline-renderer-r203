@@ -12,6 +12,8 @@ The implementation covers:
 - Linear sample-rate conversion and mono/stereo channel mapping.
 - Equal-power neighboring-span crossfades.
 - Peak normalization into a requested dBFS target.
+- Optional error-shaped 16-bit quantization that keeps the 16-bit container.
+- Bounded streaming renders with durable checkpoints and idempotent resume.
 - Durable render states, receipts, and atomically committed output folders.
 
 Automated tests are intentionally deferred. A later task stage will add unit,
@@ -96,6 +98,7 @@ Response:
   "sample_rate": 48000,
   "output_channels": 2,
   "target_peak_dbfs": -1,
+  "quantization": "noise_shaped_v1",
   "spans": [
     {
       "source_id": "opening_take_01",
@@ -119,6 +122,44 @@ Spans are sequential. A later span overlaps its predecessor by
 `crossfade_frames`; the overlap is mixed with equal-power weights. A crossfade
 must fit within both neighboring spans.
 
+Timelines may select a `quantization` mode. The default, `legacy`, keeps the
+original 16-bit round-to-nearest encoding and produces byte-identical output to
+earlier releases. `noise_shaped_v1` keeps the same 16-bit PCM container but
+moves quantization error out of the audible band with deterministic error
+feedback plus shaped TPDF dither. The mode is recorded on the timeline so it is
+part of the render's selection digest.
+
+## Optional error-shaped 16-bit quantization
+
+`noise_shaped_v1` is intended for the long-tail problem where a quiet passage
+carries audible quantization spurs even though the loud body of the file is
+fine. It does not raise the bit depth, relax a noise budget, or substitute a
+random sequence for a real shaper:
+
+- A fixed 33-tap noise-transfer function is designed from a least-squares
+  objective over the audible band (20 Hz to `min(16 kHz, 0.85 * Nyquist)`).
+  The design depends only on the sample rate, so a retried render derives the
+  same taps.
+- The loop feeds back `y[n] - base[n]`, so the delivered error spectrum is
+  exactly `C(z)` times the quantizer's (dither + rounding) error. The in-band
+  error power falls by `|C|^2`; the same power appears above the band edge.
+  Nothing is hidden — the receipt reports both band floors.
+- The single-bit container stays 16-bit, and the normalization gain still
+  guarantees the output never clips, so the reported peak remains truthful.
+- Each decision retains at most one LSB of residual history. A sudden step
+  between a full-scale passage and near silence cannot amplify stale state,
+  because a saturated decision discards its residual and the feedback sum is
+  clamped.
+- Stereo is shaped per channel with the channel index mixed into the
+  deterministic dither, so a common error path is not imposed across channels.
+
+The receipt's `quantization` block records the mode, the specification digest,
+the shaper profile, tap count, dither amplitude, audible-band edges, the
+deterministic `audible_band_gain_db` / `out_of_band_gain_db`, and the measured
+audible and out-of-band error floors of the delivered WAV. It also reports
+`audible_floor_delta_db`, the measured improvement against what plain
+round-to-nearest would have produced from the same normalized samples.
+
 ### Start a render
 
 `PUT /v1/renders/{render_id}`
@@ -133,6 +174,21 @@ The render runs through the durable states
 `queued -> rendering -> finalizing -> completed`. A failed render records a
 terminal `failed` state with a stable error code and does not expose a partial
 output folder.
+
+Renders stream in bounded blocks: sources are read through a small rolling
+window, the mix is normalized from a first pass over the same blocks, and the
+WAV is written block by block. No render holds a whole decoded source or a
+whole mix in memory, so long projects stay inside a fixed working set.
+
+Every render also persists a checkpoint (quantizer error history, measurement
+accumulator, normalization gain, and frame index) beside the partial WAV.
+If a request is interrupted, repeating the same render identifier continues
+from that checkpoint and produces the same PCM as an uninterrupted render.
+The checkpoint is bound to a selection digest that covers the timeline spans,
+source digests, target peak, quantization specification, and dither seed; a
+checkpoint from any other selection is refused rather than borrowing its error
+history. A `completed` render is terminal and a retry returns the unchanged
+receipt and output bytes.
 
 ### Read resources
 
@@ -187,11 +243,18 @@ Run each declared production check from the repository root:
 go run ./cmd/timelinecheck -workflow ingest-audio-source
 go run ./cmd/timelinecheck -workflow compose-timeline
 go run ./cmd/timelinecheck -workflow render-mixdown
+go run ./cmd/timelinecheck -workflow quantize-errorshaping
+go run ./cmd/timelinecheck -workflow render-resume
+go run ./cmd/timelinecheck -workflow stereo-shaping
 ```
 
 Each check creates an isolated temporary data directory, starts the real HTTP
 handler, sends generated WAV inputs, and verifies read-back or rendered output.
-The checks are bounded and do not require network access.
+The checks are bounded and do not require network access. `quantize-errorshaping`
+asserts that the shaper moves error out of the audible band and that the receipt
+records a measured improvement; `render-resume` interrupts a render and asserts
+that a retry reproduces the uninterrupted PCM, and `stereo-shaping` asserts a
+silent channel stays silent under per-channel shaping.
 
 ## Deferred test boundary
 

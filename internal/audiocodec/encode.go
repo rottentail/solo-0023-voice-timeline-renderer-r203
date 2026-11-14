@@ -38,24 +38,8 @@ func EncodePCM16(sampleRate, channels int, samples []float32) ([]byte, error) {
 	binary.LittleEndian.PutUint32(result[40:44], uint32(dataBytes))
 
 	for index, sample := range samples {
-		var quantized int32
-		switch {
-		case sample <= -1:
-			quantized = -32768
-		case sample >= 1:
-			quantized = 32767
-		case sample < 0:
-			quantized = int32(math.Round(float64(sample) * 32768))
-		default:
-			quantized = int32(math.Round(float64(sample) * 32767))
-		}
-		if quantized < -32768 {
-			quantized = -32768
-		}
-		if quantized > 32767 {
-			quantized = 32767
-		}
-		binary.LittleEndian.PutUint16(result[44+index*2:46+index*2], uint16(int16(quantized)))
+		quantized := LegacyQuantize(sample)
+		binary.LittleEndian.PutUint16(result[44+index*2:46+index*2], uint16(quantized))
 	}
 	return result, nil
 }

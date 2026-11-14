@@ -31,6 +31,7 @@ type Timeline struct {
 	SampleRate     int            `json:"sample_rate"`
 	OutputChannels int            `json:"output_channels"`
 	TargetPeakDBFS float64        `json:"target_peak_dbfs"`
+	Quantization   string         `json:"quantization,omitempty"`
 	Spans          []TimelineSpan `json:"spans"`
 	State          string         `json:"state"`
 	OutputFrames   int64          `json:"output_frames"`
@@ -70,6 +71,28 @@ type RenderJob struct {
 	UpdatedAt     time.Time    `json:"updated_at"`
 }
 
+// QuantizationReceipt records the exact 16-bit quantization semantics applied
+// to the delivered PCM along with the deterministic shaper profile and the
+// measured error distribution of those bytes.
+type QuantizationReceipt struct {
+	Mode                  string  `json:"mode"`
+	SpecDigest            string  `json:"spec_digest"`
+	ShaperProfile         string  `json:"shaper_profile"`
+	ShaperTaps            int     `json:"shaper_taps"`
+	DitherLSB             float64 `json:"dither_lsb"`
+	AudibleBandLowHz      float64 `json:"audible_band_low_hz"`
+	AudibleBandHighHz     float64 `json:"audible_band_high_hz"`
+	AudibleBandGainDB     float64 `json:"audible_band_gain_db"`
+	OutOfBandGainDB       float64 `json:"out_of_band_gain_db"`
+	MeasurementFrames     int64   `json:"measurement_frames"`
+	MeasuredBandFloorDBFS float64 `json:"measured_audible_floor_dbfs"`
+	MeasuredOutBandDBFS   float64 `json:"measured_out_of_band_floor_dbfs"`
+	LegacyBandFloorDBFS   float64 `json:"legacy_audible_floor_dbfs"`
+	AudibleFloorDeltaDB   float64 `json:"audible_floor_delta_db"`
+	SelectionDigest       string  `json:"selection_digest"`
+	RestartStrategy       string  `json:"restart_strategy"`
+}
+
 type ReceiptSpan struct {
 	Index            int     `json:"index"`
 	SourceID         string  `json:"source_id"`
@@ -97,6 +120,7 @@ type RenderReceipt struct {
 	TimelineID    string               `json:"timeline_id"`
 	Output        OutputAsset          `json:"output"`
 	Normalization NormalizationReceipt `json:"normalization"`
+	Quantization  QuantizationReceipt  `json:"quantization"`
 	Spans         []ReceiptSpan        `json:"spans"`
 	Warnings      []string             `json:"warnings"`
 	CreatedAt     time.Time            `json:"created_at"`

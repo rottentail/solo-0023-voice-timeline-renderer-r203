@@ -27,7 +27,7 @@
     {
       "id": "render",
       "path": "internal/render",
-      "responsibility": "Timeline evaluation, crossfade mixing, normalization, and receipts."
+      "responsibility": "Timeline evaluation, bounded streaming mixdown, quantization, checkpoints, and receipts."
     },
     {
       "id": "storage",
@@ -40,7 +40,9 @@
       "state_transition",
       "error_propagation",
       "resource_lifecycle",
-      "concurrency"
+      "concurrency",
+      "deterministic_transform",
+      "bounded_streaming"
     ]
   },
   "workflows": [
@@ -95,6 +97,69 @@
       "success": "Returns a completed job whose WAV and receipt match.",
       "failure": "Returns a terminal failed job with a stable error code and no partial output.",
       "verification": "The workflow check renders a crossfaded timeline, decodes the result, and compares receipt measurements.",
+      "module_ids": [
+        "httpapi",
+        "service",
+        "domain",
+        "audiocodec",
+        "render",
+        "storage"
+      ]
+    },
+    {
+      "id": "quantize-errorshaping",
+      "name": "Apply error-shaped 16-bit quantization",
+      "entry": "PUT /v1/renders/{render_id}",
+      "steps": [
+        "Select noise_shaped_v1 on the timeline",
+        "Render with the deterministic shaper profile and shaped TPDF dither",
+        "Measure the delivered audible and out-of-band error floors"
+      ],
+      "success": "Output is 16-bit PCM whose receipt records the shaper profile and a measured audible-band error improvement.",
+      "failure": "The receipt cannot describe the applied quantization or the measured error moves the wrong way.",
+      "verification": "The workflow check asserts the shaper profile lowers the audible band, the measured out-of-band floor rises, and a quiet passage after a full-scale step shows no amplified residue.",
+      "module_ids": [
+        "httpapi",
+        "service",
+        "domain",
+        "audiocodec",
+        "render",
+        "storage"
+      ]
+    },
+    {
+      "id": "render-resume",
+      "name": "Resume an interrupted render",
+      "entry": "PUT /v1/renders/{render_id}",
+      "steps": [
+        "Interrupt a render after a durable checkpoint",
+        "Repeat the identifier with the same selection",
+        "Continue from the checkpoint instead of restarting"
+      ],
+      "success": "The retried render completes with PCM identical to an uninterrupted render and leaves a completed receipt unchanged.",
+      "failure": "The retry produces different PCM, borrows another selection's error history, or rewrites a completed receipt.",
+      "verification": "The workflow check interrupts a render via a cancelled request, retries it, and compares the output bytes with an isolated uninterrupted reference.",
+      "module_ids": [
+        "httpapi",
+        "service",
+        "domain",
+        "audiocodec",
+        "render",
+        "storage"
+      ]
+    },
+    {
+      "id": "stereo-shaping",
+      "name": "Shape stereo error without a common path",
+      "entry": "PUT /v1/renders/{render_id}",
+      "steps": [
+        "Select noise_shaped_v1 on a stereo timeline",
+        "Render a loud left / silent right source",
+        "Inspect both output channels"
+      ],
+      "success": "The silent channel stays silent; shaping never folds a shared error into the wrong channel.",
+      "failure": "A common error component leaks into the quiet channel and shifts the stereo image.",
+      "verification": "The workflow check renders shaped stereo and asserts the silent channel carries no more than one LSB.",
       "module_ids": [
         "httpapi",
         "service",
